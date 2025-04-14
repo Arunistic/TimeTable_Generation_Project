@@ -36,7 +36,7 @@ def load_and_clean_csv(branch, folder_path):
     return combined_df
 
 # Root directory where all the data is stored
-root_dir = "/Users/arunodayahosakeri/Desktop/Data4timetable"
+root_dir = "../Time2Scare"
 
 # List of all branches (folders)
 branches = ['cse_a', 'cse_b', 'dsai', 'ece']

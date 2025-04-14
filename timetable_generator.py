@@ -21,16 +21,11 @@ TIME_SLOTS = [
 
 FIXED_BREAK = ('10:30', '11:00')
 
-lunch_breaks = {
-    'Monday': ('13:00', '14:00'),
-    'Tuesday': ('13:00', '14:00'),
-    'Wednesday': ('13:00', '14:00'),
-    'Thursday': ('13:00', '14:00'),
-    'Friday': ('13:00', '14:00')
-}
+lunch_breaks = {day: ('13:00', '14:00') for day in DAYS}
 
 timetable = {}
 slot_usage = {}
+faculty_slot_usage = {}  # Tracks when each faculty is booked
 
 def time_to_datetime(time_str):
     try:
@@ -48,6 +43,8 @@ def is_lunch_conflict(start_time, end_time, day):
 def allocate_sessions(num_sessions, duration, session_type, branch_sem, course, name, faculty):
     count = 0
     retries = 0
+    faculty_key = str(faculty)
+
     while count < num_sessions and retries < MAX_RETRIES:
         day = random.choice(DAYS)
         for i, (start, end) in enumerate(TIME_SLOTS):
@@ -56,33 +53,44 @@ def allocate_sessions(num_sessions, duration, session_type, branch_sem, course, 
 
             if start_time is None or end_time is None:
                 continue
-
             if (start, end) == FIXED_BREAK:
                 continue
-
             if is_lunch_conflict(start_time, end_time, day):
                 continue
 
+            slot_key = (day, i)
+            if faculty_key not in faculty_slot_usage:
+                faculty_slot_usage[faculty_key] = set()
+
+            if slot_key in faculty_slot_usage[faculty_key]:
+                continue
+
             if duration == 1.5 and (end_time - start_time) == timedelta(hours=1, minutes=30):
-                if not slot_usage[branch_sem][(day, i)]:
-                    slot_usage[branch_sem][(day, i)] = True
+                if not slot_usage[branch_sem][slot_key]:
+                    slot_usage[branch_sem][slot_key] = True
+                    faculty_slot_usage[faculty_key].add(slot_key)
                     timetable[branch_sem].append({
                         'Course Code': course,
+                        'Course Name': name,
                         'Day': day,
                         'Time': f"{start} - {end}",
-                        'Type': session_type
+                        'Type': session_type,
+                        'Faculty': faculty
                     })
                     count += 1
                     break
 
             elif duration == 1.0 and (end_time - start_time) == timedelta(hours=1):
-                if not slot_usage[branch_sem][(day, i)]:
-                    slot_usage[branch_sem][(day, i)] = True
+                if not slot_usage[branch_sem][slot_key]:
+                    slot_usage[branch_sem][slot_key] = True
+                    faculty_slot_usage[faculty_key].add(slot_key)
                     timetable[branch_sem].append({
                         'Course Code': course,
+                        'Course Name': name,
                         'Day': day,
                         'Time': f"{start} - {end}",
-                        'Type': session_type
+                        'Type': session_type,
+                        'Faculty': faculty
                     })
                     count += 1
                     break
@@ -127,10 +135,8 @@ def generate_full_timetable(csv_path):
         for _ in range(num_practical_sessions):
             allocate_sessions(1, 1.5, 'Practical', branch_sem, course, name, faculty)
 
-        # Store the course details per branch_sem
         if branch_sem not in course_details:
             course_details[branch_sem] = []
-        
         course_details[branch_sem].append({
             'Course Code': course,
             'Course Name': name,
@@ -151,7 +157,6 @@ def generate_full_timetable(csv_path):
 
 def export_timetable_to_excel(timetable, course_details, filename="timetables.xlsx"):
     with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-        # Writing timetable and course details in the same sheet
         for class_sem, sessions in timetable.items():
             data = []
             for day in DAYS:
@@ -166,7 +171,6 @@ def export_timetable_to_excel(timetable, course_details, filename="timetables.xl
                 time = s['Time']
                 course_code = s['Course Code']
                 session_type = s['Type']
-
                 cell = f"{course_code} ({session_type[0]})"
 
                 for row in data:
@@ -174,12 +178,9 @@ def export_timetable_to_excel(timetable, course_details, filename="timetables.xl
                         row[time] = cell
 
             df_timetable = pd.DataFrame(data)
-
-            # Writing the timetable for the current class
             df_timetable.to_excel(writer, sheet_name=class_sem, index=False)
 
-            # Adding course details below the timetable
-            course_details_start_row = len(df_timetable) + 2  # Adding 2 to leave a row between the timetable and course details
+            course_details_start_row = len(df_timetable) + 2
             if class_sem in course_details:
                 df_details = pd.DataFrame(course_details[class_sem])
                 df_details.to_excel(writer, sheet_name=class_sem, startrow=course_details_start_row, index=False)
@@ -203,6 +204,7 @@ def print_timetable_terminal(timetable):
 if __name__ == "__main__":
     timetable = {}
     slot_usage = {}
+    faculty_slot_usage = {}
 
     final_timetable, course_details = generate_full_timetable("cleaned_courses.csv")
 
